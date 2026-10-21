@@ -21,7 +21,7 @@ function contrast(a, b) {
     const startup = /  if \(document\.readyState === "loading"\) document\.addEventListener\("DOMContentLoaded", installDom, \{ once: true \}\);\n  else installDom\(\);/;
     assert(startup.test(source), 'Expected extension startup boundary');
     const instrumented = source.replace(startup,
-      '  window.communityTest={state,normalizeState,render,handleClick,SHADOW_CSS,ROOT_ID};');
+      '  window.communityTest={state,normalizeState,render,handleClick,SHADOW_CSS,POV_CSS,ROOT_ID};');
     await page.setContent('<!doctype html><meta charset="utf-8"><title>Community UI regression</title>');
     await page.evaluate(() => {
       window.marinara = { onCleanup() {}, storage: { patch: async () => ({ ok: true }) } };
@@ -34,7 +34,7 @@ function contrast(a, b) {
       document.body.append(host);
       const root = host.attachShadow({ mode: 'open' });
       const style = document.createElement('style');
-      style.textContent = t.SHADOW_CSS;
+      style.textContent = t.SHADOW_CSS + t.POV_CSS;
       root.append(style);
       const panel = document.createElement('section');
       panel.className = 'panel';
@@ -93,6 +93,25 @@ function contrast(a, b) {
         }
         assert.equal(await page.evaluate(() => window.communityUiError || ''), '');
         console.log(`PASS Reddit browser: ${width}px ${darkMode ? 'dark' : 'light'}, card geometry, full timestamps, bookmark contrast and save/remove`);
+        await page.evaluate(() => {
+          const t=window.communityTest, board=t.state.data.boards.room;
+          for(const mode of ['reader','drama']) board.posts.push({...JSON.parse(JSON.stringify(board.posts[0])),id:mode,pov:mode,title:mode+' ONLY TITLE'});
+          board.posts[0].title='world ONLY TITLE';
+          t.state.view='list'; t.state.detail=null; t.render();
+        });
+        for(const mode of ['reader','drama','world','drama']) {
+          const audience=mode!=='world';
+          if(audience && !await page.locator('.pov-audience').count()) await page.locator('.pov-switch [data-act=pov-tab]').nth(1).click();
+          await page.locator(`${audience ? '.pov-audience' : '.pov-switch'} [data-id=${mode}]`).click();
+          await page.waitForFunction(expected=>window.communityTest.state.data.boards.room.identity.pov===expected,mode);
+          assert.equal(await page.locator('.l-reddit .card').count(),1);
+          assert((await page.locator('.l-reddit .r-title').innerText()).includes(mode+' ONLY TITLE'));
+          const dimensions=await page.locator('.pov-nav').evaluate(nav=>({right:nav.getBoundingClientRect().right,buttons:[...nav.querySelectorAll('button')].map(b=>({width:b.getBoundingClientRect().width,right:b.getBoundingClientRect().right}))}));
+          assert(dimensions.right<=width+1);
+          assert(dimensions.buttons.every(b=>b.width>=44 && b.right<=width+1),'POV controls must fit viewport');
+        }
+        assert.equal(await page.evaluate(() => window.communityUiError || ''), '');
+        console.log(`PASS POV tabs browser: ${width}px ${darkMode ? 'dark':'light'}, real world/reader/drama clicks, filtering and button bounds`);
       }
     }
     await context.close();
