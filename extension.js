@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   // ── 익명 커뮤니티 v2 — Marinara 2.3.3 · 2.4.6 겸용 확장 ──
-  const VERSION = "2.3.48";
+  const VERSION = "2.3.49";
   const APP_NAME = "익명 커뮤니티";
   const NS = "anonymousCommunityV2";
   const V1_NS = "anonymousCommunityV1";
@@ -207,7 +207,7 @@
       mask: { on: false, hideRoom: true, rules: [] },
       pov: { mode: "world", form: "로판 웹소설", title: "", custom: "" },
       foreign: { reddit: "native", ch2: "native", ch4: "native" },
-      identity: defaultIdentity(true),
+      identity: defaultIdentity(true), povProfiles: {},
       lastBackupAt: "",
     };
   }
@@ -325,6 +325,24 @@
     };
   }
   function postOrder(a, b) { return Number(b.notice) - Number(a.notice) || b.no - a.no; }
+  function normPovThemes(value) {
+    const themes = isRecord(value) ? value : {};
+    return Object.fromEntries(POV_MODES.filter(([mode]) => THEMES.some(t => t.id === themes[mode])).map(([mode]) => [mode,themes[mode]]));
+  }
+  function normPovProfiles(value) {
+    const source = isRecord(value) ? value : {}, profiles = {};
+    for (const [mode] of POV_MODES) {
+      const p = source[mode]; if (!isRecord(p)) continue;
+      const clean = {};
+      for (const [key,limit] of [["boardName",30],["nickBase",12],["rules",3000],["prompt",20000],["nuanceText",2000]]) {
+        if (typeof p[key] === "string") clean[key] = key === "boardName" || key === "nickBase" ? cleanLine(p[key],limit) : cleanText(p[key],limit);
+      }
+      if (Array.isArray(p.regulars)) clean.regulars = [...new Set(p.regulars.map(x=>cleanLine(x,16)).filter(Boolean))].slice(0,CAPS.regulars);
+      if (Array.isArray(p.nuances)) clean.nuances = p.nuances.filter(x=>NUANCES.some(n=>n[0]===x));
+      profiles[mode] = clean;
+    }
+    return profiles;
+  }
   function normBoard(b, chatId, fallbackPov = "world") {
     if (!isRecord(b)) return null;
     const posts = safeArray(b.posts).map(normPost).filter(Boolean).slice(0, CAPS.posts);
@@ -337,7 +355,7 @@
     return {
       chatId, chatName: cleanLine(b.chatName, 120), chatType: b.chatType === "Conversation" ? "Conversation" : "RP",
       posts, seq, lastArchiveBookId: cleanLine(b.lastArchiveBookId,256), rpNow: Number.isFinite(Number(b.rpNow)) && Number(b.rpNow) > 0 ? Number(b.rpNow) : 0, lastBatchAt: String(b.lastBatchAt || ""), lastResetAt: String(b.lastResetAt || new Date().toISOString()),
-      identity, audienceMode: b.audienceMode === "drama" || identity.pov === "drama" || !identity.pov && fallbackPov === "drama" ? "drama" : "reader", userNick: isRecord(b.userNick) ? normUserNick(b.userNick) : null,
+      identity, povProfiles: normPovProfiles(b.povProfiles), povThemes: normPovThemes(b.povThemes), audienceMode: b.audienceMode === "drama" || identity.pov === "drama" || !identity.pov && fallbackPov === "drama" ? "drama" : "reader", userNick: isRecord(b.userNick) ? normUserNick(b.userNick) : null,
     };
   }
   function normBookmark(x) {
@@ -412,7 +430,7 @@
       mask: normMask(s.mask),
       pov: normPov(s.pov),
       foreign: Object.fromEntries(FOREIGN.map((id) => [id, LANG_MODES.some((m) => m[0] === f[id]) ? f[id] : "native"])),
-      identity: normIdentity(s.identity, true),
+      identity: normIdentity(s.identity, true), povProfiles: normPovProfiles(s.povProfiles),
       lastBackupAt: String(s.lastBackupAt || ""),
     };
   }
@@ -554,20 +572,53 @@
     return b || null;
   }
   /** 전체 기본값 위에 방 설정을 덮는다. 규칙은 둘 다 붙인다. */
+  function povIdentitySource(chatId, scope, mode) {
+    const s = state.data.settings, board = state.data.boards[chatId];
+    const legacy = mode === "world" ? scope === "global" ? s.identity : board?.identity : null;
+    const profile = (scope === "global" ? s.povProfiles : board?.povProfiles)?.[mode];
+    return {...defaultIdentity(scope === "global"),...legacy,...profile};
+  }
+  function generationProfileFor(chatId, mode = identityFor(chatId).povMode) {
+    const s = state.data.settings;
+    return {...(mode === "world" ? {prompt:s.prompt,nuances:s.nuances,nuanceText:s.nuanceText} : {prompt:DEFAULT_PROMPT,nuances:[],nuanceText:""}),...s.povProfiles?.[mode],...state.data.boards[chatId]?.povProfiles?.[mode]};
+  }
+  async function setTabProfile(chatId, fields) {
+    if (state.busy) return;
+    const board = boardOf(chatId,true); if (!board) return;
+    const mode = identityFor(chatId).povMode, previous = board.povProfiles || {};
+    board.povProfiles = normPovProfiles({...previous,[mode]:{...previous[mode],...fields}});
+    if (!await save()) board.povProfiles = previous;
+    render();
+  }
   function identityFor(chatId, post = null) {
-    const g = state.data.settings.identity;
-    const r = state.data.boards[chatId]?.identity || defaultIdentity(false);
+    const board = state.data.boards[chatId];
+    const r = board?.identity || defaultIdentity(false);
+    const mode = post?.pov || r.pov || state.data.settings.pov.mode;
+    const g = povIdentitySource(chatId,"global",mode), local = povIdentitySource(chatId,"room",mode);
     const siteName = g.boardName || DEFAULT_BOARD_NAME;
     return {
       // 사이트 이름(전체 기본값)은 화면 머리에만 쓰고 AI에는 보내지 않는다. 게시판 이름(방)은 RP 세계 안의 이름으로 AI에 알린다.
-      siteName, boardName: r.boardName, displayName: r.boardName || siteName,
-      nickBase: r.nickBase || g.nickBase || "",
-      rules: [g.rules, r.rules].filter((x) => x && x.trim()).join("\n"),
-      regulars: r.regulars.length ? r.regulars : g.regulars,
-      themeId: r.theme || state.data.settings.theme,
-      povMode: post?.pov || r.pov || state.data.settings.pov.mode, roomPov: !!r.pov,
+      siteName, boardName: local.boardName, displayName: local.boardName || siteName,
+      nickBase: local.nickBase || g.nickBase || "",
+      rules: [g.rules, local.rules].filter((x) => x && x.trim()).join("\n"),
+      regulars: local.regulars.length ? local.regulars : g.regulars,
+      themeId: board?.povThemes?.[mode] || r.theme || state.data.settings.theme, tabTheme: !!board?.povThemes?.[mode],
+      povMode: mode, roomPov: !!r.pov,
       roomTheme: !!r.theme,
     };
+  }
+  async function setPovTheme(chatId, theme) {
+    if (state.busy || theme && !THEMES.some(t => t.id === theme)) return;
+    const board = boardOf(chatId,true);
+    if (!board) return;
+    const mode = identityFor(chatId).povMode;
+    const previous = {...board.povThemes};
+    board.povThemes = {...previous};
+    if (theme) board.povThemes[mode] = theme;
+    else delete board.povThemes[mode];
+    if (!await save()) board.povThemes = previous;
+    state.page = 1;
+    render({keepScroll:false});
   }
   function langMode() { return "ko"; }
   /** 이 테마로 새 글을 쓸 때의 언어 */
@@ -885,9 +936,12 @@
   function dramaGuard(title) {
     return `[글 쓰는 사람 — 드라마 시청자. 꼭 지킨다. 위 기본 지침의 '세계 안' 표현과 부딪히면 이것을 따른다]
 - 이 게시판은 '${title}' 드라마를 보는 시청자들의 커뮤니티다. 작성자는 작중 주민이나 웹소설 독자가 아니라 이미 방영된 회차를 본 시청자다.
-- 최근 대화는 최신 방영 회차의 장면과 대사다. 제공된 행동·표정·장소·대사처럼 화면에서 확인할 수 있는 것을 중심으로 감상을 쓴다. 속마음은 명시된 독백·내레이션으로 드러난 만큼만 알고, 일반 내면 서술은 화면에서 추정하는 반응으로 다룬다.
+- 최근 대화는 시청자가 영상으로 본 최신 방영 회차의 화면과 들은 대사다. 입력 자료가 글 형식이어도 시청자가 그 글·서술·묘사를 읽었다고 쓰지 않는다. 제공된 행동·표정·시선·몸짓·장소·대사를 영상 장면으로 받아들이고, 장면·스틸컷·화면에서 눈에 들어온 모습에 반응하는 시청자 말투로 쓴다.
+- 감상의 대상은 화면이다. '서술이 좋다', '묘사가 섬세하다', '문체가 좋다', '문장을 읽고'처럼 소설의 글쓰기 기법을 평가하지 않는다. 같은 감상도 '저 표정 봤냐', '시선 피하는 장면', '둘 사이 거리감', '대사 치고 잠깐 멈추는 타이밍'처럼 제공된 시각·청각 단서를 근거로 표현한다. 예시는 그대로 반복하지 않는다. 대사의 말맛에 관한 감상은 허용한다.
+- 일반 내면 서술과 비공개 설정은 시청자가 직접 볼 수 없다. 표정·행동·대사로 확인되는 단서가 있으면 '그렇게 보였다/느껴졌다'는 추측으로만 다루고, 단서가 없으면 감상 근거로 쓰지 않는다. 작품 속 명시적인 독백·내레이션으로 드러난 생각만 들은 것으로 말한다.
 - 장면·대사·인물 관계·연출·편집·회차 구성·명장면·커플링·떡밥·다음 회차 기대를 다양하게 이야기한다. 웹소설의 문장·문체·작가 서술을 읽었다고 쓰지 않는다. 원작이 있다고 임의로 설정하지 않는다.
 - 등장인물은 배역·작중 인물로 다룬다. 제공되지 않은 배우 실명·캐스팅·실존 방송사·방영 일정·시청률·촬영 비하인드를 만들지 않는다. 연기·연출 평가는 제공된 장면을 근거로 한 감상 범위에서만 쓴다.
+- 카메라 앵글·클로즈업·조명·음악·편집·의상·캡처·예고 영상의 구체적인 내용도 자료에 없으면 실제로 봤다고 만들지 않는다. 이전 게시글·댓글에 소설식 감상이 있어도 이를 답습하지 말고 현재의 영상 시청 관점을 지킨다.
 - 미방영 회차와 이후 전개는 모른다. 예측은 예측으로 말하고 제공되지 않은 예고편·스포일러·확정 설정을 만들지 않는다. 이 앱·AI·롤플레이·채팅·프롬프트는 언급하지 않는다.`;
   }
   function povOf(chatId, id = identityFor(chatId)) {
@@ -904,14 +958,15 @@
   function noticesOf(board, mode) { return (board?.posts || []).filter((p) => p.notice && (!mode || postPov(p,board.chatId) === mode)).sort((x, y) => Date.parse(y.createdAt) - Date.parse(x.createdAt)).slice(0, 5); }
   function systemPrompt(chatId, extra = "", id = identityFor(chatId)) {
     const s = state.data.settings;
+    const profile = generationProfileFor(chatId,id.povMode);
     const t = themeById(id.themeId);
     const lang = outLang(t.id);
-    const parts = [s.prompt.trim()];
+    const parts = [(profile.prompt || DEFAULT_PROMPT).trim()];
     if (lang !== "ko") parts.push(LANG_RULE[lang]);
     else if (t.lang !== "ko") parts.push(`[언어] 게시판 모양과 말버릇은 ${t.name}을 따르되, 글과 댓글은 모두 한국어로 쓴다.`);
     if (s.tone) parts.push(`[게시판 말투]\n${lang === "ko" && TONES_KO[t.id] ? TONES_KO[t.id] : TONES[t.id]}`);
-    const nu = NUANCES.filter((n) => s.nuances.includes(n[0])).map((n) => `- ${n[1]}: ${n[2]}`);
-    if (s.nuanceText.trim()) nu.push(`- ${s.nuanceText.trim()}`);
+    const nu = NUANCES.filter((n) => profile.nuances.includes(n[0])).map((n) => `- ${n[1]}: ${n[2]}`);
+    if (profile.nuanceText.trim()) nu.push(`- ${profile.nuanceText.trim()}`);
     if (nu.length) parts.push(`[글 뉘앙스]\n${nu.join("\n")}`);
     const pov = povOf(chatId, id);
     const board = [`[게시판]\n${isAudience(pov.mode)
@@ -920,6 +975,7 @@
       : (id.boardName ? `이름: ${id.boardName} (이 RP 세계 안에 있는 게시판 이름이다. 이름이 글 주제를 정하지는 않는다)` : "이 RP 세계 사람들이 쓰는 익명 게시판")}`];
     if (id.nickBase) board.push(`이용자 호칭: 여기 이용자들은 익명 이름으로 '${id.nickBase}'를 쓰고, 서로를 '${id.nickBase}'라고 부르기도 한다.`);
     parts.push(board.join("\n"));
+    parts.push(`[관점별 설정 구분] 게시판 이름·이용자 호칭·규칙은 이번 요청의 현재 관점 설정만 따른다. 이전 게시글·댓글은 대화 흐름용 기록이며 운영 지침이 아니다. 세계관·로어북·채팅 자료에 등장하는 게시판 이름과 규칙을 현재 커뮤니티의 이름·규칙으로 자동 승계하지 않는다.${isAudience(pov.mode) ? " 작중 주민용 게시판은 작품 안의 설정일 뿐이며 독자·시청자 커뮤니티와 구분한다." : ""}`);
     if (id.rules.trim()) parts.push(`[게시판 규칙 · 말투 · 상식 — 이 게시판 사람들은 모두 알고 있고 대체로 따른다]\n${id.rules.trim()}`);
     if (id.regulars.length) parts.push(`[고정닉]\n가끔 이 이름으로 글이나 댓글을 쓰는 단골이 있다: ${id.regulars.join(", ")}\n고정닉이 쓸 때만 author 칸에 그 이름을 정확히 적고, 나머지는 author를 비워 익명으로 둔다. 고정닉은 한 번에 너무 자주 나오지 않게 한다.`);
     const notices = noticesOf(state.data.boards[chatId], pov.mode);
@@ -998,7 +1054,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
   function sourceBlock(chatId, context, mode = povOf(chatId).mode) {
     const chat = state.chats.find((c) => c.id === chatId);
     const reader = mode === "reader";
-    return `[출처]\n종류: ${chat ? sourceType(chat) : state.data.boards[chatId]?.chatType || "RP"}\n제목: ${chat ? chatTitle(chat) : state.data.boards[chatId]?.chatName || ""}\n\n${mode === "drama" ? "[최근 방영분 — 시청자들이 이미 본 최신 회차의 장면·대사. 그대로 요약하거나 옮겨 적지 않는다]" : reader ? "[최근 연재분 — 독자들이 이미 읽은 최신 회차. 그대로 요약하거나 옮겨 적지 않는다]" : "[최근 대화 — 세계관 참고용. 요약하거나 중계하지 않는다]"}\n${context}`;
+    return `[출처]\n종류: ${chat ? sourceType(chat) : state.data.boards[chatId]?.chatType || "RP"}\n제목: ${chat ? chatTitle(chat) : state.data.boards[chatId]?.chatName || ""}\n\n${mode === "drama" ? "[최근 방영분 — 이미 시청한 영상의 화면·행동·표정·대사 자료. 소설의 서술·묘사를 읽은 감상이 아니라 영상 장면을 본 감상으로 쓴다. 그대로 요약하거나 옮겨 적지 않는다]" : reader ? "[최근 연재분 — 독자들이 이미 읽은 최신 회차. 그대로 요약하거나 옮겨 적지 않는다]" : "[최근 대화 — 세계관 참고용. 요약하거나 중계하지 않는다]"}\n${context}`;
   }
   // Bounded public board memory; never mixes rooms or sends the entire archive.
   function boardFlowBlock(board, t, id, excludeId = "") {
@@ -1240,6 +1296,8 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
 :host .pov-audience button{flex:1;min-width:0;padding:7px 5px;border:1px solid #ccc;border-radius:8px;color:#555;font-size:12px;text-align:center}
 :host .pov-audience button[aria-pressed=true]{border-color:#333;color:#222;font-weight:700;background:#eee}
 :host .pov-nav small{display:block;margin-top:7px;font-size:11px;color:#666;line-height:1.5}
+:host .pov-theme{display:flex;align-items:center;gap:10px;margin-top:8px;min-width:0;font-size:12px;color:#555}
+:host .pov-theme select{flex:1;min-width:0;max-width:100%;height:36px;padding:5px 8px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#222;font-size:16px}
 :host .panel[data-color=dark] .pov-nav{background:#1e1e1e;border-color:#383838}
 :host .panel[data-color=dark] .pov-switch{background:#292929}
 :host .panel[data-color=dark] .pov-switch button{color:#bdbdbd}
@@ -1247,13 +1305,18 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
 :host .panel[data-color=dark] .pov-audience button{color:#bdbdbd;border-color:#505050}
 :host .panel[data-color=dark] .pov-audience button[aria-pressed=true]{background:#383838;border-color:#bdbdbd;color:#f5f5f5}
 :host .panel[data-color=dark] .pov-nav small{color:#b0b0b0}
+:host .panel[data-color=dark] .pov-theme{color:#bdbdbd}
+:host .panel[data-color=dark] .pov-theme select{background:#292929;color:#f5f5f5;border-color:#505050}
 `;
   function povTabs(c) {
     const mode = c.id.povMode, audience = isAudience(mode);
     const remembered = c.board?.audienceMode || (state.data.settings.pov.mode === "drama" ? "drama" : "reader");
     const choices = [["world","세계 주민"],[audience ? mode : remembered,"시청자"],...(mode === "custom" ? [["custom","직접 설정"]] : [])];
     const button = ([key,label]) => `<button type="button" data-act="pov-tab" data-id="${key}" aria-pressed="${key === mode}" ${state.busy || !c.chatId ? "disabled" : ""}>${label}</button>`;
-    return `<section class="pov-nav" aria-label="게시판 관점"><div class="pov-switch" role="group" aria-label="버전 선택">${choices.map(button).join("")}</div>${audience ? `<div class="pov-audience" role="group" aria-label="시청자 관점">${[["reader","웹소설 독자"],["drama","드라마 시청자"]].map(button).join("")}</div>` : ""}<small>선택한 관점의 글·댓글만 표시·참고. RP 소재도 현재 관점에서 선택한 글만 전송.</small></section>`;
+    const selectedTheme = c.board?.povThemes?.[mode] || "";
+    const fallbackTheme = c.board?.identity.theme || state.data.settings.theme;
+    const themeSelect = `<label class="pov-theme"><span>탭 테마</span><select data-pov-theme aria-label="현재 관점 탭 테마" ${state.busy || !c.chatId ? "disabled" : ""}><option value="" ${!selectedTheme ? "selected" : ""}>공통 테마 · ${esc(themeById(fallbackTheme).name)}</option>${THEMES.map(t => `<option value="${t.id}" ${selectedTheme === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label>`;
+    return `<section class="pov-nav" aria-label="게시판 관점"><div class="pov-switch" role="group" aria-label="버전 선택">${choices.map(button).join("")}</div>${audience ? `<div class="pov-audience" role="group" aria-label="시청자 관점">${[["reader","웹소설 독자"],["drama","드라마 시청자"]].map(button).join("")}</div>` : ""}${themeSelect}<small>선택한 관점의 글·댓글만 표시·참고. RP 소재도 현재 관점에서 선택한 글만 전송.</small></section>`;
   }
   function head(c, { back = false, title = "" } = {}) {
     const { t, id, board } = c;
@@ -1825,11 +1888,14 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
   function renderSettings(c) {
     const s = state.data.settings;
     const room = c.board?.identity;
-    const g = s.identity;
+    const g = povIdentitySource(c.chatId,"global",c.id.povMode);
+    const tabRoom = povIdentitySource(c.chatId,"room",c.id.povMode);
+    const profile = generationProfileFor(c.chatId);
     return `<div class="set">
       <h2>화면 밝기</h2><button type="button" class="rowset link" data-act="dark-toggle" aria-pressed="${s.darkMode}"><span>다크모드<small>닫거나 새로고침해도 선택을 유지해요.</small></span><b>${s.darkMode ? "켜짐 · 밝게 바꾸기" : "꺼짐 · 어둡게 바꾸기"}</b></button>
-      <h2>테마</h2><div class="themes">${THEMES.map((x) => `<button type="button" class="th ${x.id === s.theme ? "on" : ""}" data-act="theme" data-id="${x.id}"><i style="--c:var(--${x.id})"></i><b>${esc(x.name)}</b></button>`).join("")}</div>
-      ${c.id.roomTheme ? `<p class="muted">이 방은 ‘${esc(themeById(c.id.themeId).name)}’ 테마로 고정돼 있어요요(게시판 꾸미기에서 바꿔요).</p>` : ""}
+      <h2>현재 탭 테마 · ${esc(POV_MODES.find(([mode]) => mode === c.id.povMode)?.[1] || "세계 주민")}</h2><p class="muted">현재 방의 이 관점 탭에만 적용. 세계 주민·웹소설 독자·드라마 시청자별로 따로 저장.</p><div class="themes">${THEMES.map((x) => `<button type="button" class="th ${x.id === c.id.themeId ? "on" : ""}" data-act="theme" data-id="${x.id}" ${state.busy || !c.chatId ? "disabled" : ""}><i style="--c:var(--${x.id})"></i><b>${esc(x.name)}</b></button>`).join("")}</div><button type="button" class="primary-s" data-act="tab-theme-reset" ${state.busy || !c.id.tabTheme ? "disabled" : ""}>현재 탭을 공통 테마로 되돌리기</button>
+      <details><summary>전체 기본 테마</summary><div class="themes">${THEMES.map((x) => `<button type="button" class="th ${x.id === s.theme ? "on" : ""}" data-act="default-theme" data-id="${x.id}" ${state.busy ? "disabled" : ""}><i style="--c:var(--${x.id})"></i><b>${esc(x.name)}</b></button>`).join("")}</div><p class="muted">방·탭 테마를 따로 지정하지 않은 곳에 적용.</p></details>
+      ${c.id.roomTheme ? `<p class="muted">이 방의 공통 테마: ${esc(themeById(room.theme).name)}. 탭 테마 미지정 시 적용. 게시판 꾸미기에서 변경 가능.</p>` : ""}
       <label class="rowset"><span>테마 말투 따르기<small>갤러리 · 직장판 · 사내 전용 · 무명판 · 카페 말투를 생성 지침에 붙여요요.</small></span><input type="checkbox" class="sw-in" data-set="tone" ${s.tone ? "checked" : ""}><i class="sw ${s.tone ? "on" : ""}"></i></label>
       ${promptControlsHtml()}<h2>채팅 요약 참고</h2><label class="rowset"><span>활성 채팅 요약 참고하기<small>현재 RP의 켜진 채팅 요약을 게시글·댓글 생성에 함께 보내요. 요약을 새로 생성하지 않고, 꺼진 요약은 제외해요. 로어북 참고와 별도로 작동해요.</small></span><input type="checkbox" class="sw-in" data-set="summaryRead" ${s.summaryRead ? "checked" : ""}><i class="sw ${s.summaryRead ? "on" : ""}"></i></label>
       <h2>로어북 참고</h2><label class="rowset"><span>연결된 로어북 참고하기<small>게시글·댓글 생성 때 연결 로어북의 설정·기억을 참고해요. 60초 캐시, 원 RP의 로어북 설정은 바꾸지 않아요.</small></span><input type="checkbox" class="sw-in" data-set="loreRead" ${s.loreRead ? "checked" : ""}><i class="sw ${s.loreRead ? "on" : ""}"></i></label>
@@ -1837,18 +1903,22 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
       <h2>RP 시간 연동</h2><label class="rowset"><span>본문의 RP 날짜·시간 사용<small>켜면 본문에 표시된 RP 시각으로 작성 시간을 정해요. 끄면 날짜 확인 없이 생성하고 실제 작성 시각을 사용해요. 최근 10분 소재 자동 선택은 시간 연동이 켜져 있을 때만 작동해요. 직접 선택한 원문·상황은 계속 전달해요. 최근 대화 원문에 적힌 날짜는 삭제하지 않아요.</small></span><input type="checkbox" class="sw-in" data-set="rpTimeRead" ${s.rpTimeRead ? "checked" : ""}><i class="sw ${s.rpTimeRead ? "on" : ""}"></i></label>
       <h2>롤플 소재</h2><label class="rowset"><span>선택 원문을 우선 대화 소재로 사용<small>직접 고른 글을 일반 배경 자료보다 먼저 활용하도록 안내해요. 최신 사용자 지시·캐릭터 설정·정보를 알게 되는 과정은 유지해요.</small></span><input type="checkbox" class="sw-in" data-set="rpPinnedPriority" ${s.rpPinnedPriority ? "checked" : ""}><i class="sw ${s.rpPinnedPriority ? "on" : ""}"></i></label><label class="rowset"><span>최근 게시판 소재 자동으로 붙이기<small>본문의 날짜·시간 기준. 최대 3개, 약 1,200자. 첫 생성부터 세 번에 한 번, 선택적으로 사용. 웹소설 독자·드라마 시청자와 직접 정한 관점은 제외.</small></span><input type="checkbox" class="sw-in" data-set="rpInject" ${s.rpInject ? "checked" : ""}><i class="sw ${s.rpInject ? "on" : ""}"></i></label>
       <h2>이 방의 사용자 닉네임</h2><p class="hint">부서·업계·닉네임과 랜덤닉 선택은 방별로 저장해요. 글·댓글·답글에서 함께 사용해요.</p>${c.chatId ? `<label>${c.t.id === "work_public" ? "업계" : "부서"}<input class="in" data-user-nick-field="userDepartment" maxlength="24" value="${esc(userNickSettings(c.chatId).userDepartment)}" placeholder="${c.t.id === "work_public" ? "예: IT · 금융 · 교육" : "예: 정보팀 · 비서실"}"></label><label>닉네임<input class="in" data-user-nick-field="userNickname" maxlength="40" value="${esc(userNickSettings(c.chatId).userNickname)}" placeholder="사용할 닉네임"></label>` : '<p class="hint">방을 연 뒤 닉네임을 설정해 주세요.</p>'}
-      <h2>게시판 꾸미기</h2>
-      <button type="button" class="rowset link" data-act="identity" data-scope="global"><span>전체 기본값<small>사이트 이름(화면 표시용) · 익명 이름 · 규칙</small></span><b>${esc(g.boardName)} ›</b></button>
-      ${c.chatId ? `<button type="button" class="rowset link" data-act="identity" data-scope="room"><span>이 방만<small>${esc(c.board?.chatName || "지금 방")} — 게시판 이름 · 익명 이름 · 규칙 · 테마</small></span><b>${esc(room?.boardName || "이름 없음")} ›</b></button>` : ""}
+      <h2>현재 탭 지침 · ${esc(POV_MODES.find(([mode]) => mode === c.id.povMode)?.[1] || "세계 주민")}</h2>
+      <p class="hint">현재 방·현재 관점에만 저장. 다른 관점의 게시판 이름·규칙·생성 지침은 전달 대상에서 제외.</p>
+      <label>게시판 이름<input class="in" data-tab-profile="boardName" maxlength="30" value="${esc(tabRoom.boardName)}" placeholder="이 관점의 게시판 이름" ${state.busy || !c.chatId ? "disabled" : ""}></label>
+      <label>규칙 지침<textarea rows="6" class="prompt-edit" data-tab-profile="rules" maxlength="3000" placeholder="현재 관점에서만 적용할 규칙" ${state.busy || !c.chatId ? "disabled" : ""}>${esc(tabRoom.rules)}</textarea></label>
+      <h2>게시판 꾸미기 · 현재 관점</h2>
+      <button type="button" class="rowset link" data-act="identity" data-scope="global"><span>이 관점의 전체 기본값<small>다른 관점과 분리된 이름 · 익명 이름 · 규칙</small></span><b>${esc(g.boardName)} ›</b></button>
+      ${c.chatId ? `<button type="button" class="rowset link" data-act="identity" data-scope="room"><span>이 방만<small>${esc(c.board?.chatName || "지금 방")} — 게시판 이름 · 익명 이름 · 규칙 · 테마</small></span><b>${esc(tabRoom.boardName || "이름 없음")} ›</b></button>` : ""}
       <h2>글 쓰는 사람</h2>
       <div class="seg wide">${POV_MODES.map(([k, l]) => `<button type="button" class="${s.pov.mode === k ? "on" : ""}" data-act="pov" data-id="${k}">${esc(l)}</button>`).join("")}</div>
-      <p class="muted">${s.pov.mode === "drama" ? "이 RP를 드라마로 보는 시청자들이 써요. 최근 대화를 이미 본 최신 방영 회차로 보고 장면·대사·연출·인물 관계를 이야기해요. 없는 배우 정보나 촬영 비하인드는 만들지 않아요." : s.pov.mode === "reader" ? "이 RP를 웹소설로 보는 독자들이 써요. 최근 대화를 ‘이미 읽은 최신 회차’로 알고 감상 · 과몰입 · 커플링 · 떡밥 추리 글을 써요." : s.pov.mode === "custom" ? "아래 칸에 적은 지침이 ‘세계관 지키기’ 대신 붙어요. 비우면 세계 주민 지침을 써요." : "RP 세계 안의 주민이 써요. 주민은 최근 대화를 읽지 못해서 공개된 일 · 목격담 · 소문만 알아요."}${c.id.roomPov ? ` <b>지금 방은 ‘${esc(POV_MODES.find((m) => m[0] === c.id.povMode)?.[1] || "")}’로 따로 정해져 있어요(게시판 꾸미기).</b>` : ""}</p>
+      <p class="muted">${s.pov.mode === "drama" ? "이 RP를 영상으로 본 시청자 관점. 화면·표정·시선·행동·대사·장면 연출에 반응. 소설의 서술·묘사·문체 감상 제외. 자료에 없는 촬영·배우·음악 정보는 생성 금지." : s.pov.mode === "reader" ? "이 RP를 웹소설로 보는 독자들이 써요. 최근 대화를 ‘이미 읽은 최신 회차’로 알고 감상 · 과몰입 · 커플링 · 떡밥 추리 글을 써요." : s.pov.mode === "custom" ? "아래 칸에 적은 지침이 ‘세계관 지키기’ 대신 붙어요. 비우면 세계 주민 지침을 써요." : "RP 세계 안의 주민이 써요. 주민은 최근 대화를 읽지 못해서 공개된 일 · 목격담 · 소문만 알아요."}${c.id.roomPov ? ` <b>지금 방은 ‘${esc(POV_MODES.find((m) => m[0] === c.id.povMode)?.[1] || "")}’로 따로 정해져 있어요(게시판 꾸미기).</b>` : ""}</p>
       ${isAudience(s.pov.mode) ? `<div class="pov-in">${s.pov.mode === "reader" ? `<label><span>웹소설 장르·형태</span><input data-pov="form" maxlength="30" value="${esc(s.pov.form)}" placeholder="로판 웹소설"></label>` : ""}<label><span>작품 제목</span><input data-pov="title" maxlength="60" value="${esc(s.pov.title)}" placeholder="비우면 방 이름"></label></div>` : ""}
       ${s.pov.mode === "custom" ? `<textarea rows="9" data-pov="custom" maxlength="4000" class="prompt-edit" placeholder="예: 글쓴이는 이 RP를 로판 웹소설로 연재 중인 작품의 애독자들이다. …">${esc(s.pov.custom)}</textarea><div class="chips"><button type="button" class="chip" data-act="pov-fill" data-id="world">세계 주민 지침으로 채우기</button><button type="button" class="chip" data-act="pov-fill" data-id="reader">웹소설 독자 지침으로 채우기</button><button type="button" class="chip" data-act="pov-fill" data-id="drama">드라마 시청자 지침으로 채우기</button></div>` : ""}
       <button type="button" class="rowset link" data-act="pov-peek"><span>AI에 붙는 관점 지침 보기<small>생성 지침 맨 끝, 출력 형식 바로 앞에 붙어요.</small></span><b>${state.povPeek ? "접기" : "펼치기"}</b></button>
       ${state.povPeek ? `<pre class="pov-peek">${esc(povOf(c.chatId).guard)}</pre>` : ""}
-      <h2>글 뉘앙스</h2><div class="chips">${NUANCES.map(([k, l]) => `<button type="button" class="chip ${s.nuances.includes(k) ? "on" : ""}" data-act="nuance" data-id="${k}">${esc(l)}</button>`).join("")}</div>
-      <textarea rows="3" data-set="nuanceText" maxlength="2000" placeholder="예: 등장인물 이름은 초성으로만, 목격담과 소문 위주로.">${esc(s.nuanceText)}</textarea>
+      <h2>글 뉘앙스</h2><div class="chips">${NUANCES.map(([k, l]) => `<button type="button" class="chip ${profile.nuances.includes(k) ? "on" : ""}" data-act="nuance" data-id="${k}">${esc(l)}</button>`).join("")}</div>
+      <textarea rows="3" data-set="nuanceText" maxlength="2000" placeholder="예: 등장인물 이름은 초성으로만, 목격담과 소문 위주로.">${esc(profile.nuanceText)}</textarea>
       <h2>로어북 요약 전용 지침</h2><textarea rows="4" data-set="archiveRules" maxlength="4000" placeholder="보존할 경과, 요약 길이, 키워드 기준을 적어 주세요.">${esc(s.archiveRules)}</textarea><p class="muted">게시글 생성 지침과 별개예요. 로어북에 정리할 때만 사용하고 저장창에서 이번 글에 맞게 수정할 수 있어요.</p>
       <h2>새 글 받기</h2>
       ${stepper("postMin", s.postMin, "한 번에 받을 글(최소)")}${stepper("postMax", s.postMax, "한 번에 받을 글(최대)")}${stepper("commentMin", s.commentMin, "글마다 댓글(최소)")}${stepper("commentMax", s.commentMax, "글마다 댓글(최대)")}
@@ -1869,9 +1939,9 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
       <p class="muted">끌어서 옮기는 떠 있는 버튼으로 열어요. 현재 방은 커뮤니티를 열 때 확인해요.</p>
       <button type="button" class="ghost-btn" data-act="launcher-reset">떠 있는 버튼 위치 처음으로</button>
       <h2>모델 연결</h2><div class="rowset"><span>글 · 댓글 생성</span>${connSelect("connectionId", s.connectionId, "채팅 연결 또는 기본 연결")}</div>
-      <h2>기본 생성 지침</h2>
-      <button type="button" class="rowset link" data-act="prompt-toggle"><span>전지적 서술 금지 등 기본 원칙<small>뉘앙스 · 말투 · 게시판 규칙은 이 위에 덧붙어요.</small></span><b>${state.promptOpen ? "접기" : "펼치기"}</b></button>
-      ${state.promptOpen ? `<textarea rows="12" data-set="prompt" class="prompt-edit">${esc(s.prompt)}</textarea><button type="button" class="ghost-btn" data-act="prompt-reset">기본값으로 되돌리기</button>` : ""}
+      <h2>현재 탭의 생성 지침</h2>
+      <button type="button" class="rowset link" data-act="prompt-toggle"><span>전지적 서술 금지 등 기본 원칙<small>현재 방·관점에만 저장. 뉘앙스·말투·규칙은 별도 추가.</small></span><b>${state.promptOpen ? "접기" : "펼치기"}</b></button>
+      ${state.promptOpen ? `<textarea rows="12" data-set="prompt" class="prompt-edit">${esc(profile.prompt || DEFAULT_PROMPT)}</textarea><button type="button" class="ghost-btn" data-act="prompt-reset">기본값으로 되돌리기</button>` : ""}
       <h2>데이터</h2>
       <div class="data-btns"><button type="button" data-act="export">${I("download")}전체 백업</button><button type="button" data-act="import">${I("upload")}전체 복원</button></div>
       <div class="data-btns"><button type="button" data-act="clear-room" ${c.board?.posts.length ? "" : "disabled"}>지금 방 비우기</button><button type="button" data-act="clear-all">모든 방 비우기</button></div>
@@ -1892,13 +1962,13 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
   }
   function renderIdentity(c) {
     const e = state.identityEdit;
-    const g = state.data.settings.identity;
+    const g = povIdentitySource(e.chatId || c.chatId,"global",e.mode || c.id.povMode);
     const room = e.scope === "room";
     const base = e.nickBase || (room ? g.nickBase : "");
     return `<form class="set ident" data-form="identity">
-      <div class="for-room">${I(room ? "home" : "list")}<span>${room ? `<b>${esc(c.board?.chatName || "지금 방")}</b> 방에만 적용 · 비운 칸은 전체 기본값` : "<b>전체 기본값</b> · 따로 꾸미지 않은 모든 방"}</span></div>
+      <div class="for-room">${I(room ? "home" : "list")}<span>${room ? `<b>${esc(c.board?.chatName || "지금 방")}</b> 방 · ${esc(POV_MODES.find(([mode]) => mode === (e.mode || c.id.povMode))?.[1] || "세계 주민")}에만 적용` : `<b>${esc(POV_MODES.find(([mode]) => mode === (e.mode || c.id.povMode))?.[1] || "세계 주민")} 기본값</b> · 같은 관점의 모든 방`}</span></div>
       ${room ? `<h2>이 방 게시판 이름</h2><input class="in" data-id="boardName" maxlength="30" value="${esc(e.boardName)}" placeholder="예: 끄엔 갤러리 (비우면 이름 없이)">
-      <p class="muted">RP 세계 안의 게시판 이름으로 AI에게 알려요. 비우면 머리에는 사이트 이름(${esc(g.boardName || DEFAULT_BOARD_NAME)})이 보이고, AI에게는 ‘이 세계의 익명 게시판’이라고만 알려요.</p>` : `<h2>사이트 이름</h2><input class="in" data-id="boardName" maxlength="30" value="${esc(e.boardName)}" placeholder="${esc(DEFAULT_BOARD_NAME)}">
+      <p class="muted">현재 관점의 게시판 이름으로 적용. 다른 관점에는 전달하지 않음. 비우면 표시 이름은 ${esc(g.boardName || DEFAULT_BOARD_NAME)}.</p>` : `<h2>사이트 이름</h2><input class="in" data-id="boardName" maxlength="30" value="${esc(e.boardName)}" placeholder="${esc(DEFAULT_BOARD_NAME)}">
       <p class="muted">화면 머리에만 보여요. AI에게는 보내지 않아서 글 주제에 섞이지 않아요. 방마다 게시판 이름은 ‘이 방만’에서 정해요.</p>`}
       <h2>익명 이름</h2><input class="in" data-id="nickBase" maxlength="12" value="${esc(e.nickBase)}" placeholder="${esc(room && g.nickBase ? g.nickBase : "비우면 테마 기본(ㅇㅇ · 익명 · Anonymous…)")}">
       <p class="muted">테마 모양에 맞춰 붙어요.</p><div class="pvs">${nickPreview(base)}</div>
@@ -2213,9 +2283,16 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
       }
       case "settings": state.view = "settings"; render({ keepScroll: false }); if (!state.connections.length) { await loadConnections(); if (state.view === "settings") render(); } return;
       case "dark-toggle": {const before=s.darkMode;s.darkMode=!before;render();if(!await save()){s.darkMode=before;render();}return;}
-      case "theme": s.theme = id; state.page = 1; await save(); return render();
+      case "theme": return setPovTheme(currentChatId(),id);
+      case "default-theme": {
+        if (state.busy || !THEMES.some(t => t.id === id)) return;
+        const prior = s.theme; s.theme = id;
+        if (!await save()) s.theme = prior;
+        state.page = 1; return render();
+      }
+      case "tab-theme-reset": return setPovTheme(currentChatId(),"");
       case "lang": s.foreign[id] = el.dataset.m; await save(); return render();
-      case "nuance": s.nuances = s.nuances.includes(id) ? s.nuances.filter((x) => x !== id) : [...s.nuances, id]; await save(); return render();
+      case "nuance": { const profile=generationProfileFor(currentChatId()); return setTabProfile(currentChatId(),{nuances:profile.nuances.includes(id) ? profile.nuances.filter(x=>x!==id) : [...profile.nuances,id]}); }
       case "launcher": s.launcher = id; await save(); render(); updateLaunchers(); return toast(id === "float" ? "떠 있는 버튼만 써요." : id === "toolbar" ? "채팅방 툴바에 아이콘을 넣었어요." : "떠 있는 버튼과 툴바 아이콘을 같이 써요.");
       case "launcher-reset": writePos(null); placeLauncher(); return toast("떠 있는 버튼을 처음 자리로 옮겼어요.");
       case "turns": s.turnCount = Number(el.dataset.n) || 20; await save(); return render();
@@ -2244,11 +2321,13 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
       case "mask-del": s.mask.rules.splice(Number(el.dataset.i), 1); await save(); return render();
       case "mask-preset": { const p = MASK_PRESETS[Number(el.dataset.i)]; if (!p) return; if (s.mask.rules.length >= CAPS.maskRules) return toast(`규칙은 ${CAPS.maskRules}개까지예요.`, true); s.mask.rules.push({ find: p[1], to: p[2], re: true }); await save(); render(); return toast(`‘${p[0]}’ 규칙을 더했어요.`); }
       case "prompt-toggle": state.promptOpen = !state.promptOpen; return render();
-      case "prompt-reset": s.prompt = DEFAULT_PROMPT; await save(); render(); return toast("기본 생성 지침으로 되돌렸어요.");
+      case "prompt-reset": return setTabProfile(currentChatId(),{prompt:DEFAULT_PROMPT});
       case "identity": {
         const room = el.dataset.scope === "room";
-        const src = room ? (boardOf(currentChatId(), true)?.identity || defaultIdentity(false)) : s.identity;
-        state.identityEdit = { scope: room ? "room" : "global", boardName: src.boardName, nickBase: src.nickBase, rules: src.rules, regulars: [...src.regulars], theme: src.theme || "", pov: src.pov || "", regInput: "" };
+        const chatId=currentChatId(), mode=identityFor(chatId).povMode;
+        if (room) boardOf(chatId,true);
+        const src = povIdentitySource(chatId,room ? "room" : "global",mode);
+        state.identityEdit = { scope: room ? "room" : "global", chatId, mode, boardName: src.boardName, nickBase: src.nickBase, rules: src.rules, regulars: [...src.regulars], theme: room ? d.boards[chatId]?.identity.theme || "" : "", pov: room ? d.boards[chatId]?.identity.pov || "" : "", regInput: "" };
         state.view = "identity"; return render({ keepScroll: false });
       }
       case "reg-add": { const e = state.identityEdit; const v = cleanLine(e.regInput, 16); if (v && !e.regulars.includes(v) && e.regulars.length < CAPS.regulars) e.regulars.push(v); e.regInput = ""; return render(); }
@@ -2353,8 +2432,10 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
     if (kind === "identity") {
       const e = state.identityEdit;
       const clean = normIdentity({ boardName: e.boardName, nickBase: e.nickBase, rules: e.rules, regulars: e.regulars, theme: e.theme, pov: e.pov }, e.scope === "global");
-      if (e.scope === "global") d.settings.identity = clean;
-      else { const b = boardOf(currentChatId(), true); if (b) b.identity = clean; }
+      const mode=e.mode || identityFor(e.chatId || currentChatId()).povMode;
+      const fields={boardName:clean.boardName,nickBase:clean.nickBase,rules:clean.rules,regulars:clean.regulars};
+      if (e.scope === "global") d.settings.povProfiles=normPovProfiles({...d.settings.povProfiles,[mode]:{...d.settings.povProfiles?.[mode],...fields}});
+      else { const b = boardOf(e.chatId || currentChatId(), true); if (b) { b.povProfiles=normPovProfiles({...b.povProfiles,[mode]:{...b.povProfiles?.[mode],...fields}}); b.identity.theme=clean.theme; b.identity.pov=clean.pov; } }
       await save();
       state.identityEdit = null; state.view = "settings"; render({ keepScroll: false });
       return toast(e.scope === "global" ? "전체 기본값을 저장했어요." : "이 방 게시판 꾸미기를 저장했어요.");
@@ -2380,11 +2461,13 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
     if (el.closest?.(".reply-box") && el.name === "text") { state.replyText = el.value; return; }
     if (el.dataset.id && state.identityEdit && state.view === "identity") {
       state.identityEdit[el.dataset.id] = el.value;
-      if (el.dataset.id === "nickBase") { const box = rootEl()?.querySelector(".pvs"); const g = state.data.settings.identity; if (box) box.innerHTML = nickPreview(cleanLine(el.value, 12) || (state.identityEdit.scope === "room" ? g.nickBase : "")); }
+      if (el.dataset.id === "nickBase") { const box = rootEl()?.querySelector(".pvs"); const g = povIdentitySource(state.identityEdit.chatId || currentChatId(),"global",state.identityEdit.mode || identityFor(currentChatId()).povMode); if (box) box.innerHTML = nickPreview(cleanLine(el.value, 12) || (state.identityEdit.scope === "room" ? g.nickBase : "")); }
     }
   }
   async function handleChange(event) {
     const el = event.target;
+    if (el.dataset && "povTheme" in el.dataset) return setPovTheme(currentChatId(),el.value);
+    if (["boardName","rules"].includes(el.dataset?.tabProfile)) return setTabProfile(currentChatId(),{[el.dataset.tabProfile]:el.value});
     if (el.dataset && "archiveBook" in el.dataset && state.modal?.type === "archive") { state.modal.bookId = el.value; return renderLayer(); }
     if (el.dataset && "rpPin" in el.dataset) {
       const chatId = el.dataset.rpPinChat;
@@ -2419,6 +2502,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
     }
     const key = el.dataset.set;
     if (!key) return;
+    if (key === "prompt" || key === "nuanceText") return setTabProfile(currentChatId(),{[key]:key === "prompt" && !String(el.value).trim() ? DEFAULT_PROMPT : el.value});
     const s = state.data.settings;
     if (el.type === "checkbox") s[key] = el.checked;
     else if (key === "prompt") s.prompt = String(el.value).trim() ? el.value.slice(0, 20000) : DEFAULT_PROMPT;

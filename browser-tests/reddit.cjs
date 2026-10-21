@@ -21,7 +21,7 @@ function contrast(a, b) {
     const startup = /  if \(document\.readyState === "loading"\) document\.addEventListener\("DOMContentLoaded", installDom, \{ once: true \}\);\n  else installDom\(\);/;
     assert(startup.test(source), 'Expected extension startup boundary');
     const instrumented = source.replace(startup,
-      '  window.communityTest={state,normalizeState,render,handleClick,SHADOW_CSS,POV_CSS,ROOT_ID};');
+      '  window.communityTest={state,normalizeState,render,handleClick,handleChange,SHADOW_CSS,POV_CSS,ROOT_ID};');
     await page.setContent('<!doctype html><meta charset="utf-8"><title>Community UI regression</title>');
     await page.evaluate(() => {
       window.marinara = { onCleanup() {}, storage: { patch: async () => ({ ok: true }) } };
@@ -41,6 +41,9 @@ function contrast(a, b) {
       root.append(panel);
       root.addEventListener('click', event => {
         void t.handleClick(event).catch(error => { window.communityUiError = String(error); });
+      });
+      root.addEventListener('change', event => {
+        void t.handleChange(event).catch(error => { window.communityUiError = String(error); });
       });
     });
     for (const width of [320, 393, 1024]) {
@@ -112,6 +115,34 @@ function contrast(a, b) {
         }
         assert.equal(await page.evaluate(() => window.communityUiError || ''), '');
         console.log(`PASS POV tabs browser: ${width}px ${darkMode ? 'dark':'light'}, real world/reader/drama clicks, filtering and button bounds`);
+        const themes={world:'gall',reader:'reddit',drama:'cafe'};
+        for(const mode of ['world','reader','drama']) {
+          if(mode!=='world' && !await page.locator('.pov-audience').count()) await page.locator('.pov-switch [data-act=pov-tab]').nth(1).click();
+          await page.locator(`${mode==='world'?'.pov-switch':'.pov-audience'} [data-id=${mode}]`).click();
+          await page.locator('[data-pov-theme]').selectOption(themes[mode]);
+          await page.waitForFunction(theme=>document.querySelector('#'+window.communityTest.ROOT_ID).shadowRoot.querySelector('.app').dataset.theme===theme,themes[mode]);
+          const select=await page.locator('[data-pov-theme]').evaluate(el=>({font:parseFloat(getComputedStyle(el).fontSize),right:el.getBoundingClientRect().right}));
+          assert(select.font>=16 && select.right<=width+1,'Theme select must fit mobile without small focus font');
+        }
+        await page.evaluate(()=>{window.communityTest.state.connections=[{id:'test',name:'test'}]});
+        await page.locator('.top [data-act=settings]').click();
+        await page.locator('[data-tab-profile=boardName]').fill('DRAMA_BOARD_NAME');
+        await page.locator('[data-tab-profile=boardName]').press('Tab');
+        await page.waitForFunction(()=>window.communityTest.state.data.boards.room.povProfiles?.drama?.boardName==='DRAMA_BOARD_NAME');
+        await page.locator('[data-tab-profile=rules]').fill('DRAMA_RULES_ONLY');
+        await page.locator('[data-tab-profile=rules]').press('Tab');
+        await page.waitForFunction(()=>window.communityTest.state.data.boards.room.povProfiles?.drama?.rules==='DRAMA_RULES_ONLY');
+        await page.locator('.top [data-act=back]').click();
+        await page.locator('.pov-switch [data-id=world]').click();
+        assert.equal(await page.locator('[data-pov-theme]').inputValue(),'gall');
+        await page.locator('.top [data-act=settings]').click();
+        assert.equal(await page.locator('[data-tab-profile=rules]').inputValue(),'');
+        assert.equal(await page.locator('[data-tab-profile=boardName]').inputValue(),'');
+        await page.locator('.top [data-act=back]').click();
+        await page.locator('.pov-switch [data-act=pov-tab]').nth(1).click();
+        assert.equal(await page.locator('[data-pov-theme]').inputValue(),'cafe');
+        assert.equal(await page.evaluate(()=>window.communityUiError || ''),'');
+        console.log(`PASS tab themes/rules browser: ${width}px ${darkMode?'dark':'light'}, real selects, isolated native input changes, remembered theme`);
       }
     }
     await context.close();
