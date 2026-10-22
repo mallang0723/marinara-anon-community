@@ -143,6 +143,19 @@ function contrast(a, b) {
         assert.equal(await page.locator('[data-pov-theme]').inputValue(),'cafe');
         assert.equal(await page.evaluate(()=>window.communityUiError || ''),'');
         console.log(`PASS tab themes/rules browser: ${width}px ${darkMode?'dark':'light'}, real selects, isolated native input changes, remembered theme`);
+        await page.locator('.pov-switch [data-id=world]').click();
+        await page.locator('.list [data-act=open]').first().click();
+        const scopeSelect=page.locator('[data-post-pov]');
+        assert.equal(await scopeSelect.inputValue(),'world');
+        await scopeSelect.selectOption('reader');
+        await page.waitForFunction(()=>window.communityTest.state.data.boards.room.posts.find(p=>p.id==='post').pov==='reader' && window.communityTest.state.view==='list');
+        assert.equal(await page.locator('.list [data-act=open]').count(),0,'Moved post must leave world list');
+        await page.locator('.pov-switch [data-act=pov-tab]').nth(1).click();
+        await page.locator('.pov-audience [data-id=reader]').click();
+        assert.equal(await page.locator('.list [data-act=open]').count(),2,'Moved post must appear in reader list');
+        assert.equal(await page.evaluate(()=>window.communityTest.state.data.boards.room.posts.find(p=>p.id==='post').comments.length),1);
+        assert.equal(await page.evaluate(()=>window.communityUiError || ''),'');
+        console.log(`PASS post POV move browser: ${width}px ${darkMode?'dark':'light'}, real select and lossless list move`);
       }
     }
     await context.close();
