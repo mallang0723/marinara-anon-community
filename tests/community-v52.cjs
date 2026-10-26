@@ -22,8 +22,8 @@ const rendered='[Memory: guidance for replies]\n\n[지난 이야기 흐름]\nC1 
   // cache: no second call within 30s
   const before=callCount();await t.readMemoryReferences('room','world');assert.equal(callCount(),before);
   t.clear();setReply({enabled:false,rendered:''});assert.equal(await t.readMemoryReferences('room','world'),'');assert(t.memoryStatusHtml('room').includes('꺼져 있어'));
-  t.clear();setReply(Object.assign(new Error('요청 실패 (404)'),{status:404}));assert.equal(await t.readMemoryReferences('room','world'),'');assert(t.memoryStatusHtml('room').includes('기억 모듈이 없어'));
-  t.clear();setReply('<!doctype html>');assert.equal(await t.readMemoryReferences('room','world'),'');assert(t.memoryStatusHtml('room').includes('기억 모듈이 없어'));
+  t.clear();setReply(Object.assign(new Error('요청 실패 (404)'),{status:404}));assert.equal(await t.readMemoryReferences('room','world'),'');assert.equal(t.memoryStatusHtml('room'),'','no notice when the module is not installed');
+  t.clear();setReply('<!doctype html>');assert.equal(await t.readMemoryReferences('room','world'),'');assert.equal(t.memoryStatusHtml('room'),'','no notice when the module is not installed');
   // fit keeps the story flow and open items when too long
   const long='[지난 이야기 흐름]\nC1\n\n[떠오른 장면]\n'+'가'.repeat(5000)+'\n\n[아직 끝나지 않은 일]\n- 약속';
   const fit=t.fitMemory(long,1000);assert(fit.includes('[지난 이야기 흐름]'));assert(fit.includes('- 약속'));assert(fit.length<=1000);

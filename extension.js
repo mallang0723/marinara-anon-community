@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   // ── 익명 커뮤니티 v2 — Marinara 2.3.3 · 2.4.6 겸용 확장 ──
-  const VERSION = "2.3.54";
+  const VERSION = "2.3.55";
   const APP_NAME = "익명 커뮤니티";
   const NS = "anonymousCommunityV2";
   const V1_NS = "anonymousCommunityV1";
@@ -1674,6 +1674,8 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
   function memoryStatusHtml(chatId) {
     if(!chatId || chatId===LEGACY_BOARD) return "";
     const s=state.data.settings,p=memoryReadStatus.get(chatId);
+    // 서버에 기억 모듈이 없으면(기억 서재를 쓰지 않으면) 아무것도 보여 주지 않는다.
+    if(p?.state==="missing") return "";
     const text=!s.memoryRead ? "꺼짐" : !p ? "켜짐 · 생성할 때 읽어요" : p.state==="ok" ? `켜짐 · 마지막으로 ${p.text.length.toLocaleString()}자 넣음` : p.state==="disabled" ? "켜짐 · 이 방은 기억 서재에서 '이 방에서 기억 사용'이 꺼져 있어 넣지 않았어요" : p.state==="empty" ? "켜짐 · 아직 정리된 기억이 없어요" : p.state==="missing" ? "켜짐 · 서버에 기억 모듈이 없어 넣지 않았어요" : "켜짐 · 기억을 읽지 못했어요: "+p.error;
     return `<small>기억 서재 참고: ${esc(text)}. 기억 모듈이 정리한 지난 이야기·사실·약속을 최대 ${MEMORY_MAX_CHARS.toLocaleString()}자까지 넣어요. 따로 검색하거나 AI를 부르지 않아요.</small>`;
   }
