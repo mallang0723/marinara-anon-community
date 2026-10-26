@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   // ── 익명 커뮤니티 v2 — Marinara 2.3.3 · 2.4.6 겸용 확장 ──
-  const VERSION = "2.3.52";
+  const VERSION = "2.3.53";
   const APP_NAME = "익명 커뮤니티";
   const NS = "anonymousCommunityV2";
   const V1_NS = "anonymousCommunityV1";
@@ -1259,6 +1259,10 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
     globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.6 2.5 14.4 0 17M12 3.5c-2.5 2.6-2.5 14.4 0 17"/>',
     list: '<path d="M8 7h12M8 12h12M8 17h12M4 7h.01M4 12h.01M4 17h.01"/>',
     eyeoff: '<path d="M3 3l18 18"/><path d="M10.6 5.6A9.7 9.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3.2 3.9M6.3 6.9C3.9 8.5 2.5 12 2.5 12S6 18.5 12 18.5c1.6 0 3-.4 4.2-1"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>',
+    check: '<path d="M5 12.5 10 17.5 19 7"/>',
+    plus: '<path d="M12 5v14M5 12h14"/>',
+    chev: '<path d="m9 6 6 6-6 6"/>',
+    layers: '<path d="m12 3.5 8.5 4.5L12 12.5 3.5 8 12 3.5Z"/><path d="m3.5 12 8.5 4.5 8.5-4.5M3.5 16l8.5 4.5 8.5-4.5"/>',
   };
   const I = (n, cls = "") => `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${P[n] || ""}</svg>`;
   const nl = (s) => esc(s).replace(/\n/g, "<br>");
@@ -1325,6 +1329,47 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
 :host .post-scope small{display:block;margin-top:6px;font-size:11px;line-height:1.5;color:#666}
 :host .panel[data-color=dark] .post-scope{border-color:#383838}
 :host .panel[data-color=dark] .post-scope small{color:#b0b0b0}
+
+:host .pov-nav{padding:8px 12px 7px}
+:host .pov-switch{padding:3px;border-radius:11px}
+:host .pov-switch button{padding:7px 6px;font-size:13.5px}
+:host .pov-theme{margin-top:7px}
+:host .pov-theme select{height:34px}
+:host .pov-nav small{margin-top:5px}
+:host .chip{white-space:nowrap}
+:host .ref-box{margin:10px 12px 4px;border:1px solid #e3e4e8;border-radius:12px;background:#fafafb;overflow:hidden}
+:host .ref-head{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;text-align:left;color:#333}
+:host .ref-head .ref-ic{width:18px;height:18px;flex:none;color:var(--a,#333)}
+:host .ref-title{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+:host .ref-title b{font-size:13px;font-weight:700}
+:host .ref-title small{font-size:11.5px;color:#888;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+:host .ref-head em{flex:none;font-style:normal;font-size:11px;font-weight:700;padding:2px 7px;border-radius:9px;background:color-mix(in srgb,var(--a,#333) 12%,transparent);color:var(--a,#333)}
+:host .ref-chev{width:16px;height:16px;flex:none;color:#999;transition:transform .15s}
+:host .ref-box.open .ref-chev{transform:rotate(90deg)}
+:host .ref-body{padding:2px 12px 12px;border-top:1px solid #ececef}
+:host .ref-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+:host .ref-chip{display:inline-flex;align-items:center;gap:4px;height:30px;padding:0 11px 0 8px;border:1px solid #d6d8de;border-radius:15px;background:#fff;color:#666;font-size:12.5px;white-space:nowrap}
+:host .ref-chip .ic{width:14px;height:14px}
+:host .ref-chip[aria-pressed=true]{background:var(--a,#333);border-color:var(--a,#333);color:#fff;font-weight:600}
+:host .ref-note{margin:10px 0 0;font-size:11px;line-height:1.55;color:#888}
+:host .ref-sub{margin-top:10px;padding-top:10px;border-top:1px dashed #e0e1e6;font-size:12px}
+:host .ref-sub small{display:block;margin-top:6px;font-size:11px;line-height:1.55;color:#888}
+:host .ref-sub button{height:30px;padding:0 12px;border-radius:8px;border:1px solid var(--a,#333);background:transparent;color:var(--a,#333);font-size:12px;font-weight:600}
+:host .ref-sub details{margin-top:6px;font-size:12px}
+:host .ref-sub p{margin:6px 0;overflow-wrap:anywhere}
+:host .theme-reset{display:block;width:100%;margin-top:8px}
+:host .theme-reset:disabled{opacity:.45}
+:host .panel[data-color=dark] .ref-box{background:#202020;border-color:#383838}
+:host .panel[data-color=dark] .ref-head{color:#e8e8e8}
+:host .panel[data-color=dark] .ref-head .ref-ic,:host .panel[data-color=dark] .ref-head em{color:var(--accent-text,#aeb9ef)}
+:host .panel[data-color=dark] .ref-head em{background:#2e2e2e}
+:host .panel[data-color=dark] .ref-title small,:host .panel[data-color=dark] .ref-note,:host .panel[data-color=dark] .ref-sub small{color:#9a9a9a}
+:host .panel[data-color=dark] .ref-body{border-color:#333}
+:host .panel[data-color=dark] .ref-sub{border-color:#3a3a3a}
+:host .panel[data-color=dark] .ref-chip{background:#2a2a2a;border-color:#474747;color:#c8c8c8}
+:host .panel[data-color=dark] .ref-chip[aria-pressed=true]{background:var(--a,#555);border-color:var(--a,#555);color:#fff}
+:host .panel[data-color=dark] .th i{box-shadow:0 0 0 1px #5a5a5a}
+:host .panel[data-color=dark] .ref-sub button{border-color:var(--accent-text,#aeb9ef);color:var(--accent-text,#aeb9ef)}
 `;
   function povTabs(c) {
     const mode = c.id.povMode, audience = isAudience(mode);
@@ -1334,7 +1379,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
     const selectedTheme = c.board?.povThemes?.[mode] || "";
     const fallbackTheme = c.board?.identity.theme || state.data.settings.theme;
     const themeSelect = `<label class="pov-theme"><span>탭 테마</span><select data-pov-theme aria-label="현재 관점 탭 테마" ${state.busy || !c.chatId ? "disabled" : ""}><option value="" ${!selectedTheme ? "selected" : ""}>공통 테마 · ${esc(themeById(fallbackTheme).name)}</option>${THEMES.map(t => `<option value="${t.id}" ${selectedTheme === t.id ? "selected" : ""}>${esc(t.name)}</option>`).join("")}</select></label>`;
-    return `<section class="pov-nav" aria-label="게시판 관점"><div class="pov-switch" role="group" aria-label="버전 선택">${choices.map(button).join("")}</div>${audience ? `<div class="pov-audience" role="group" aria-label="시청자 관점">${[["reader","웹소설 독자"],["drama","드라마 시청자"]].map(button).join("")}</div>` : ""}${themeSelect}<small>선택한 관점의 글·댓글만 표시·참고. RP 소재도 현재 관점에서 선택한 글만 전송.</small></section>`;
+    return `<section class="pov-nav" aria-label="게시판 관점"><div class="pov-switch" role="group" aria-label="버전 선택">${choices.map(button).join("")}</div>${audience ? `<div class="pov-audience" role="group" aria-label="시청자 관점">${[["reader","웹소설 독자"],["drama","드라마 시청자"]].map(button).join("")}</div>` : ""}${themeSelect}<small>이 관점의 글만 보여 주고, 생성·RP 소재에도 이 관점 글만 써요.</small></section>`;
   }
   function head(c, { back = false, title = "" } = {}) {
     const { t, id, board } = c;
@@ -1429,9 +1474,12 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
     const pager = pages > 1 ? `<nav class="pager">${state.page > 1 ? `<button type="button" data-act="page" data-n="${state.page - 1}">‹</button>` : ""}${Array.from({ length: pages }, (_, i) => `<button type="button" class="${i + 1 === state.page ? "on" : ""}" data-act="page" data-n="${i + 1}">${i + 1}</button>`).join("")}${state.page < pages ? `<button type="button" data-act="page" data-n="${state.page + 1}">›</button>` : ""}</nav>` : "";
     return `${promptControlsHtml()}${toolbar(c)}<section class="list l-${c.t.id}">${shown.map((p) => row(c, p)).join("")}</section>${empty}${pager}`;
   }
+  const PROMPT_SOURCES=[["rpTimeRead","RP 시간 연동"],["summaryRead","채팅 요약"],["loreRead","로어북"],["characterRead","캐릭터"],["personaRead","페르소나"],["ltmRead","LTM 기억"],["memoryRead","기억 서재"]];
   function promptControlsHtml() {
-    const s=state.data.settings;
-    return `<div class="rp-lore-preview reference-controls"><b>게시판 생성 참고 · 켜짐 / 꺼짐</b><div class="reference-buttons">${[["rpTimeRead","RP 시간 연동"],["summaryRead","채팅 요약"],["loreRead","로어북"],["characterRead","캐릭터 프롬프트"],["personaRead","페르소나 프롬프트"],["ltmRead","LTM 기억"],["memoryRead","기억 서재"]].map(([key,label])=>`<button type="button" data-act="prompt-source-toggle" data-key="${key}" aria-pressed="${s[key]}" ${state.busy ? "disabled" : ""}>${label} · ${s[key] ? "켜짐 / 빼기" : "꺼짐 / 넣기"}</button>`).join("")}</div><small>선택은 창을 닫거나 새로고침해도 유지돼요. 모든 방 공통 설정이며 현재 방의 자료만 생성할 때 읽어요. 대기 중에는 읽지 않아요. 비공개 설정이나 익명 작성자의 신원을 공개 사실로 확정하지 않아요.</small>${ltmPreviewHtml(currentChatId())}${memoryStatusHtml(currentChatId())}</div>`;
+    const s=state.data.settings,on=PROMPT_SOURCES.filter(([key])=>s[key]),open=state.refOpen===true,chatId=currentChatId();
+    const summary=on.length ? on.map(([,label])=>label).join(" · ") : "참고 자료 없이 최근 대화만 써요";
+    const chips=PROMPT_SOURCES.map(([key,label])=>`<button type="button" class="ref-chip" data-act="prompt-source-toggle" data-key="${key}" aria-pressed="${s[key]}" ${state.busy ? "disabled" : ""}>${I(s[key] ? "check" : "plus")}<span>${label}</span></button>`).join("");
+    return `<section class="ref-box${open ? " open" : ""}"><button type="button" class="ref-head" data-act="ref-open" aria-expanded="${open}">${I("layers","ref-ic")}<span class="ref-title"><b>생성 참고</b><small>${esc(summary)}</small></span><em>${on.length}/${PROMPT_SOURCES.length}</em>${I("chev","ref-chev")}</button>${open ? `<div class="ref-body"><div class="ref-chips">${chips}</div><p class="ref-note">모든 방 공통 설정이에요. 생성할 때 현재 방의 자료만 읽고, 비공개 설정이나 익명 작성자의 신원은 공개 사실로 확정하지 않아요.</p>${s.ltmRead ? `<div class="ref-sub">${ltmPreviewHtml(chatId)}</div>` : ""}${s.memoryRead ? `<div class="ref-sub">${memoryStatusHtml(chatId)}</div>` : ""}</div>` : ""}</section>`;
   }
   function cardPromptBlock(row,label) {
     const raw=row?.data == null ? row : parseRecord(row.data);
@@ -1962,12 +2010,12 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
     const tabRoom = povIdentitySource(c.chatId,"room",c.id.povMode);
     const profile = generationProfileFor(c.chatId);
     return `<div class="set">
-      <h2>화면 밝기</h2><button type="button" class="rowset link" data-act="dark-toggle" aria-pressed="${s.darkMode}"><span>다크모드<small>닫거나 새로고침해도 선택을 유지해요.</small></span><b>${s.darkMode ? "켜짐 · 밝게 바꾸기" : "꺼짐 · 어둡게 바꾸기"}</b></button>
-      <h2>현재 탭 테마 · ${esc(POV_MODES.find(([mode]) => mode === c.id.povMode)?.[1] || "세계 주민")}</h2><p class="muted">현재 방의 이 관점 탭에만 적용. 세계 주민·웹소설 독자·드라마 시청자별로 따로 저장.</p><div class="themes">${THEMES.map((x) => `<button type="button" class="th ${x.id === c.id.themeId ? "on" : ""}" data-act="theme" data-id="${x.id}" ${state.busy || !c.chatId ? "disabled" : ""}><i style="--c:var(--${x.id})"></i><b>${esc(x.name)}</b></button>`).join("")}</div><button type="button" class="primary-s" data-act="tab-theme-reset" ${state.busy || !c.id.tabTheme ? "disabled" : ""}>현재 탭을 공통 테마로 되돌리기</button>
+      <h2>화면 밝기</h2><label class="rowset"><span>다크모드<small>닫거나 새로고침해도 선택을 유지해요.</small></span><input type="checkbox" class="sw-in" data-set="darkMode" ${s.darkMode ? "checked" : ""}><i class="sw ${s.darkMode ? "on" : ""}"></i></label>
+      <h2>현재 탭 테마 · ${esc(POV_MODES.find(([mode]) => mode === c.id.povMode)?.[1] || "세계 주민")}</h2><p class="muted">현재 방의 이 관점 탭에만 적용. 세계 주민·웹소설 독자·드라마 시청자별로 따로 저장.</p><div class="themes">${THEMES.map((x) => `<button type="button" class="th ${x.id === c.id.themeId ? "on" : ""}" data-act="theme" data-id="${x.id}" ${state.busy || !c.chatId ? "disabled" : ""}><i style="--c:var(--${x.id})"></i><b>${esc(x.name)}</b></button>`).join("")}</div><button type="button" class="ghost-btn theme-reset" data-act="tab-theme-reset" ${state.busy || !c.id.tabTheme ? "disabled" : ""}>현재 탭을 공통 테마로 되돌리기</button>
       <details><summary>전체 기본 테마</summary><div class="themes">${THEMES.map((x) => `<button type="button" class="th ${x.id === s.theme ? "on" : ""}" data-act="default-theme" data-id="${x.id}" ${state.busy ? "disabled" : ""}><i style="--c:var(--${x.id})"></i><b>${esc(x.name)}</b></button>`).join("")}</div><p class="muted">방·탭 테마를 따로 지정하지 않은 곳에 적용.</p></details>
       ${c.id.roomTheme ? `<p class="muted">이 방의 공통 테마: ${esc(themeById(room.theme).name)}. 탭 테마 미지정 시 적용. 게시판 꾸미기에서 변경 가능.</p>` : ""}
-      <label class="rowset"><span>테마 말투 따르기<small>갤러리 · 직장판 · 사내 전용 · 무명판 · 카페 말투를 생성 지침에 붙여요요.</small></span><input type="checkbox" class="sw-in" data-set="tone" ${s.tone ? "checked" : ""}><i class="sw ${s.tone ? "on" : ""}"></i></label>
-      ${promptControlsHtml()}<h2>채팅 요약 참고</h2><label class="rowset"><span>활성 채팅 요약 참고하기<small>현재 RP의 켜진 채팅 요약을 게시글·댓글 생성에 함께 보내요. 요약을 새로 생성하지 않고, 꺼진 요약은 제외해요. 로어북 참고와 별도로 작동해요.</small></span><input type="checkbox" class="sw-in" data-set="summaryRead" ${s.summaryRead ? "checked" : ""}><i class="sw ${s.summaryRead ? "on" : ""}"></i></label>
+      <label class="rowset"><span>테마 말투 따르기<small>갤러리 · 직장판 · 사내 전용 · 무명판 · 카페 말투를 생성 지침에 붙여요.</small></span><input type="checkbox" class="sw-in" data-set="tone" ${s.tone ? "checked" : ""}><i class="sw ${s.tone ? "on" : ""}"></i></label>
+      <h2>인물·기억 참고</h2><label class="rowset"><span>캐릭터 프롬프트<small>현재 방 캐릭터 카드의 설정을 함께 보내요.</small></span><input type="checkbox" class="sw-in" data-set="characterRead" ${s.characterRead ? "checked" : ""}><i class="sw ${s.characterRead ? "on" : ""}"></i></label><label class="rowset"><span>페르소나 프롬프트<small>현재 방 페르소나의 설정을 함께 보내요.</small></span><input type="checkbox" class="sw-in" data-set="personaRead" ${s.personaRead ? "checked" : ""}><i class="sw ${s.personaRead ? "on" : ""}"></i></label><label class="rowset"><span>LTM 기억<small>마리나라 LTM에서 관련 기억을 최대 6개·1,200토큰 검색해 넣어요.</small></span><input type="checkbox" class="sw-in" data-set="ltmRead" ${s.ltmRead ? "checked" : ""}><i class="sw ${s.ltmRead ? "on" : ""}"></i></label><label class="rowset"><span>기억 서재<small>기억 서재가 정리한 지난 이야기·사실·약속을 최대 16,000자 넣어요. 그 방에서 기억 사용이 켜져 있어야 해요.</small></span><input type="checkbox" class="sw-in" data-set="memoryRead" ${s.memoryRead ? "checked" : ""}><i class="sw ${s.memoryRead ? "on" : ""}"></i></label><h2>채팅 요약 참고</h2><label class="rowset"><span>활성 채팅 요약 참고하기<small>현재 RP의 켜진 채팅 요약을 게시글·댓글 생성에 함께 보내요. 요약을 새로 생성하지 않고, 꺼진 요약은 제외해요. 로어북 참고와 별도로 작동해요.</small></span><input type="checkbox" class="sw-in" data-set="summaryRead" ${s.summaryRead ? "checked" : ""}><i class="sw ${s.summaryRead ? "on" : ""}"></i></label>
       <h2>로어북 참고</h2><label class="rowset"><span>연결된 로어북 참고하기<small>게시글·댓글 생성 때 연결 로어북의 설정·기억을 참고해요. 60초 캐시, 원 RP의 로어북 설정은 바꾸지 않아요.</small></span><input type="checkbox" class="sw-in" data-set="loreRead" ${s.loreRead ? "checked" : ""}><i class="sw ${s.loreRead ? "on" : ""}"></i></label>
       <div class="rowset"><span>로어북 읽기 범위<small>전체: 켜진 항목 원문을 모두 전송. 관련: 키워드로 고른 최대 8개·8,000자.</small></span><select data-set="loreMode"><option value="full" ${s.loreMode === "full" ? "selected" : ""}>전체 · 기억 포함</option><option value="relevant" ${s.loreMode === "relevant" ? "selected" : ""}>관련 항목 · 경량</option></select></div>
       <h2>RP 시간 연동</h2><label class="rowset"><span>본문의 RP 날짜·시간 사용<small>켜면 본문에 표시된 RP 시각으로 작성 시간을 정해요. 끄면 날짜 확인 없이 생성하고 실제 작성 시각을 사용해요. 최근 10분 소재 자동 선택은 시간 연동이 켜져 있을 때만 작동해요. 직접 선택한 원문·상황은 계속 전달해요. 최근 대화 원문에 적힌 날짜는 삭제하지 않아요.</small></span><input type="checkbox" class="sw-in" data-set="rpTimeRead" ${s.rpTimeRead ? "checked" : ""}><i class="sw ${s.rpTimeRead ? "on" : ""}"></i></label>
@@ -2286,6 +2334,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
       case "pick-room": state.viewChatId = id === state.activeChatId ? "" : id; state.modal = null; state.tab = 0; state.page = 1; state.view = "list"; state.detail = null; tidyBoard(id); return render({ keepScroll: false });
       case "generate": return generateBatch();
       case "summary-read": return refreshSummaryPreview(el.dataset.chat || currentChatId());
+      case "ref-open": state.refOpen = !state.refOpen; return render();
       case "ltm-read": return refreshLtmPreview(el.dataset.chat || currentChatId());
       case "lore-read": return refreshLorePreview(el.dataset.chat || currentChatId());
       case "archive-open": return openArchive(el.dataset.chat || currentChatId(),id);
