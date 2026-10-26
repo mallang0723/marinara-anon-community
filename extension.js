@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   // ── 익명 커뮤니티 v2 — Marinara 2.3.3 · 2.4.6 겸용 확장 ──
-  const VERSION = "2.3.55";
+  const VERSION = "2.3.56";
   const APP_NAME = "익명 커뮤니티";
   const NS = "anonymousCommunityV2";
   const V1_NS = "anonymousCommunityV1";
@@ -1326,7 +1326,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
 :host .pov-audience button[aria-pressed=true]{border-color:#333;color:#222;font-weight:700;background:#eee}
 :host .pov-nav small{display:block;margin-top:7px;font-size:11px;color:#666;line-height:1.5}
 :host .pov-theme{display:flex;align-items:center;gap:10px;margin-top:8px;min-width:0;font-size:12px;color:#555}
-:host .pov-theme select{flex:1;min-width:0;max-width:100%;height:36px;padding:5px 8px;border:1px solid #ccc;border-radius:8px;background:#fff;color:#222;font-size:16px}
+:host .pov-theme select{flex:1;min-width:0;max-width:100%;height:36px;padding:5px 8px;border:1px solid #ccc;border-radius:8px;background-color:#fff;color:#222;font-size:16px}
 :host .panel[data-color=dark] .pov-nav{background:#1e1e1e;border-color:#383838}
 :host .panel[data-color=dark] .pov-switch{background:#292929}
 :host .panel[data-color=dark] .pov-switch button{color:#bdbdbd}
@@ -1335,7 +1335,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
 :host .panel[data-color=dark] .pov-audience button[aria-pressed=true]{background:#383838;border-color:#bdbdbd;color:#f5f5f5}
 :host .panel[data-color=dark] .pov-nav small{color:#b0b0b0}
 :host .panel[data-color=dark] .pov-theme{color:#bdbdbd}
-:host .panel[data-color=dark] .pov-theme select{background:#292929;color:#f5f5f5;border-color:#505050}
+:host .panel[data-color=dark] .pov-theme select{background-color:#292929;color:#f5f5f5;border-color:#505050}
 :host .post-scope{padding:10px 14px;border-bottom:1px solid #ddd}
 :host .post-scope .pov-theme{margin-top:0}
 :host .post-scope small{display:block;margin-top:6px;font-size:11px;line-height:1.5;color:#666}

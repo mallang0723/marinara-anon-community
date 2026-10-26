@@ -124,6 +124,22 @@ function contrast(a, b) {
           const select=await page.locator('[data-pov-theme]').evaluate(el=>({font:parseFloat(getComputedStyle(el).fontSize),right:el.getBoundingClientRect().right}));
           assert(select.font>=16 && select.right<=width+1,'Theme select must fit mobile without small focus font');
         }
+        // Every theme must preserve the shared arrow geometry, including dark-mode overrides.
+        const themeIds = await page.locator('[data-pov-theme] option').evaluateAll(options=>options.map(o=>o.value).filter(Boolean));
+        for (const themeId of themeIds) {
+          await page.locator('[data-pov-theme]').selectOption(themeId);
+          const arrow = await page.locator('[data-pov-theme]').evaluate(el=>{
+            const css=getComputedStyle(el);
+            return {repeat:css.backgroundRepeat,size:css.backgroundSize,position:css.backgroundPosition,image:css.backgroundImage,font:parseFloat(css.fontSize)};
+          });
+          assert.equal(arrow.repeat,'no-repeat',themeId+' arrow must not tile');
+          assert.equal(arrow.size,'15px 15px',themeId+' arrow must stay small');
+          assert(arrow.position.includes('11px') && arrow.position.includes('50%'),themeId+' arrow must stay at the right center');
+          assert(arrow.image.includes('data:image/svg+xml'),themeId+' must have one custom arrow');
+          assert(arrow.font>=16,themeId+' select must avoid small mobile focus text');
+        }
+        await page.locator('[data-pov-theme]').selectOption(themes.drama);
+        console.log(`PASS dropdown arrows: ${width}px ${darkMode?'dark':'light'}, all ${themeIds.length} themes`);
         await page.evaluate(()=>{window.communityTest.state.connections=[{id:'test',name:'test'}]});
         await page.locator('.top [data-act=settings]').click();
         await page.locator('[data-tab-profile=boardName]').fill('DRAMA_BOARD_NAME');
