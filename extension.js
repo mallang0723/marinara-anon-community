@@ -1,7 +1,7 @@
 (() => {
   "use strict";
   // ── 익명 커뮤니티 v2 — Marinara 2.3.3 · 2.4.6 겸용 확장 ──
-  const VERSION = "2.3.53";
+  const VERSION = "2.3.54";
   const APP_NAME = "익명 커뮤니티";
   const NS = "anonymousCommunityV2";
   const V1_NS = "anonymousCommunityV1";
@@ -204,7 +204,7 @@
   function defaultIdentity(global = false) { return { boardName: global ? DEFAULT_BOARD_NAME : "", nickBase: "", rules: "", regulars: [], theme: "", pov: "" }; }
   function defaultSettings() {
     return {
-      userNickMigrationDone: false, userNickMode: "random", userNickname: "", userDepartment: "", rpTimeRead: true, rpInject: true, rpPinnedPriority: true, lastTab: 0, summaryRead: true, characterRead: false, personaRead: false, ltmRead: false, memoryRead: true, loreRead: false, loreMode: "full",
+      userNickMigrationDone: false, userNickMode: "random", userNickname: "", userDepartment: "", rpTimeRead: true, rpInject: true, rpPinnedPriority: true, lastTab: 0, summaryRead: true, characterRead: false, personaRead: false, ltmRead: false, memoryRead: true, commentCap: 200, loreRead: false, loreMode: "full",
       darkMode: true, theme: "gall", tone: true, nuances: [], nuanceText: "",
       postMin: 3, postMax: 8, commentMin: 3, commentMax: 8, turnCount: 20,
       archiveRules: "날짜·화제·주요 댓글 반응·실제 RP의 관련 결과를 간결하게 정리해 주세요. 소문과 확인된 사실을 구분하고, 익명 작성자는 확정하지 마세요. 이후 대화에서 다시 불릴 구체적인 인명·별칭·장소·사건을 키워드로 골라 주세요.", connectionId: "", trConnectionId: "", prompt: DEFAULT_PROMPT,
@@ -217,7 +217,12 @@
     };
   }
   function defaultState() { return { schemaVersion: SCHEMA, settings: defaultSettings(), boards: {}, bookmarks: [], migratedV1At: "", updatedAt: new Date().toISOString() }; }
-  const CAPS = { posts: 400, comments: 200, bookmarks: 300, regulars: 8, maskRules: 30 };
+  const CAPS = { posts: 400, comments: 5000, bookmarks: 300, regulars: 8, maskRules: 30 };
+  // 글마다 댓글 한도(설정에서 선택). 한도에 닿으면 새 댓글을 막을 뿐, 이미 있는 댓글은 지우지 않는다.
+  const COMMENT_CAPS = [200, 300, 500, 1000, 2000];
+  const commentCap = () => COMMENT_CAPS.includes(state.data?.settings?.commentCap) ? state.data.settings.commentCap : 200;
+  const commentRoom = (post) => Math.max(0, commentCap() - (post?.comments?.length || 0));
+  const commentFullMessage = () => `이 글은 댓글 한도(${commentCap().toLocaleString()}개)에 닿았어요. 설정 › 새 글 받기에서 한도를 늘릴 수 있어요.`;
   function normAuthor(a, fallbackK = 0) {
     const r = isRecord(a) ? a : {};
     const out = { k: int(r.k, fallbackK, 0, 999) };
@@ -420,7 +425,7 @@
     return {
       userNickMigrationDone: s.userNickMigrationDone === true, userNickMode: s.userNickMode === "custom" ? "custom" : "random", userNickname: cleanLine(s.userNickname,40), userDepartment: cleanLine(s.userDepartment,24),
       theme: THEMES.some((t) => t.id === s.theme) ? s.theme : b.theme,
-      darkMode: s.darkMode !== false, lastTab: int(s.lastTab, 0, 0, 3), tone: s.tone !== false, rpTimeRead: s.rpTimeRead !== false, rpInject: s.rpInject !== false, rpPinnedPriority: s.rpPinnedPriority !== false, summaryRead: s.summaryRead !== false, characterRead: s.characterRead === true, personaRead: s.personaRead === true, ltmRead: s.ltmRead === true, memoryRead: s.memoryRead !== false, loreRead: s.loreRead === true, loreMode: s.loreMode === "relevant" ? "relevant" : "full",
+      darkMode: s.darkMode !== false, lastTab: int(s.lastTab, 0, 0, 3), tone: s.tone !== false, rpTimeRead: s.rpTimeRead !== false, rpInject: s.rpInject !== false, rpPinnedPriority: s.rpPinnedPriority !== false, summaryRead: s.summaryRead !== false, characterRead: s.characterRead === true, personaRead: s.personaRead === true, ltmRead: s.ltmRead === true, memoryRead: s.memoryRead !== false, commentCap: [200, 300, 500, 1000, 2000].includes(Number(s.commentCap)) ? Number(s.commentCap) : 200, loreRead: s.loreRead === true, loreMode: s.loreMode === "relevant" ? "relevant" : "full",
       nuances: safeArray(s.nuances).filter((x) => NUANCES.some((n) => n[0] === x)),
       archiveRules: typeof s.archiveRules === "string" ? cleanText(s.archiveRules,4000) : b.archiveRules, nuanceText: cleanText(s.nuanceText, 2000),
       postMin, postMax: int(s.postMax, b.postMax, postMin, 8),
@@ -1150,18 +1155,22 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
   }
 
   function threadLines(post, lang, t, id) {
-    return post.comments.map((c, i) => {
+    const all = post.comments.map((c, i) => {
       const who = c.a.me ? `${authorName(t, id, c.a, post.id, lang)}(이 앱 사용자)` : authorName(t, id, c.a, post.id, lang);
       const to = c.toId ? post.comments.findIndex((x) => x.id === c.toId) : -1;
       const affiliation=t.id === "work_public" ? ` [표시 업계: ${c.a.industry || who.split(" · ")[0]}]` : t.id === "work" ? ` [표시 부서: ${c.a.department || who.split(/\s+/)[0]}]` : "";
       return `c${i} | ${who}${affiliation}${to >= 0 ? ` → c${to}에게 답글` : ""}: ${truncate(c.body, 400)}`;
     });
+    // 댓글이 아주 많으면 앞 10개와 최근 110개만 보낸다(번호 c#는 원래대로 유지).
+    if (all.length <= 120) return all;
+    return [...all.slice(0, 10), `(c10~c${all.length - 111} 댓글 ${all.length - 120}개는 길이 때문에 생략)`, ...all.slice(-110)];
   }
   function postBlock(post, t, id) {
     return `[게시글]\n말머리: ${post.cat || "-"}\n제목: ${post.title}\n글쓴이: ${authorName(t, id, post.a, post.id, post.lang)}${post.mine ? "(이 앱 사용자)" : ""}\n본문:\n${post.body}${post.img ? `\n사진: ${post.img}` : ""}`;
   }
   /** AI 댓글 더 받기(글 하나) */
   async function generateComments(chatId, post) {
+    if (!commentRoom(post)) return toast(commentFullMessage(), true);
     await runBusy(`comments:${post.id}`, async () => {
       const s = state.data.settings;
       const id = identityFor(chatId, post);
@@ -1185,8 +1194,9 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
       const refs = new Map(post.comments.map((c, i) => [`c${i}`, c]));
       const made = buildComments(parseList(text, "comments"), { post, id, refs, commentTime, baseTime: Math.max(boardNow(chatId) - 10 * 60000, Date.parse(post.createdAt)), lang });
       if (!made.length) throw new Error("빈 댓글만 왔어요. 다시 받아주세요.");
-      post.comments.push(...made.slice(0, cmax));
-      post.comments = post.comments.slice(-CAPS.comments);
+      const room = commentRoom(post);
+      if (!room) throw new Error(commentFullMessage());
+      post.comments.push(...made.slice(0, Math.min(cmax, room)));
       post.updatedAt = new Date().toISOString();
       await save();
       toast(`댓글 ${Math.min(made.length, cmax)}개가 달렸어요.`);
@@ -1194,6 +1204,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
   }
   /** 답글 싸움: target 댓글에 AI 답글(1~3개). mine이 있으면 사용자 답글에 받아친다. */
   async function generateReplies(chatId, post, target, mine = null) {
+    if (!commentRoom(post)) return toast(commentFullMessage(), true);
     await runBusy(`reply:${target.id}`, async () => {
       const id = identityFor(chatId, post);
       const t = themeById(id.themeId);
@@ -1214,7 +1225,8 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
       const user = `${participants ? `${participants}\n\n` : ""}${summary ? `${summary}\n\n` : ""}${lore ? `${lore}\n\n` : ""}${ltm ? `${ltm}\n\n` : ""}${memory ? `${memory}\n\n` : ""}${commentTime !== null ? `[현재 롤플 시점] ${fullDate(new Date(commentTime).toISOString())}. 새 답글은 이 시점의 반응이다.\n\n` : ""}${postBlock(post, t, id)}\n\n[댓글]\n${lines.join("\n")}\n\n${ask}`;
       const text = await callModel(systemPrompt(chatId, contract + extraLang, id), user, { maxTokens: 1500 });
       const refs = new Map(post.comments.map((c, i) => [`c${i}`, c]));
-      const made = buildComments(parseList(text, "comments"), { post, id, refs, commentTime, baseTime: boardNow(chatId) - 60000, defaultTo: mine || target, lang }).slice(0, 3);
+      const made = buildComments(parseList(text, "comments"), { post, id, refs, commentTime, baseTime: boardNow(chatId) - 60000, defaultTo: mine || target, lang }).slice(0, Math.min(3, commentRoom(post)));
+      if (!commentRoom(post)) throw new Error(commentFullMessage());
       if (!made.length) throw new Error("빈 답글만 왔어요.");
       for (const c of made) if (!c.parentId) { c.parentId = target.parentId || target.id; c.toId = (mine || target).id; }
       // 답글은 그 댓글 묶음 끝에 붙인다.
@@ -1370,6 +1382,23 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
 :host .panel[data-color=dark] .ref-chip[aria-pressed=true]{background:var(--a,#555);border-color:var(--a,#555);color:#fff}
 :host .panel[data-color=dark] .th i{box-shadow:0 0 0 1px #5a5a5a}
 :host .panel[data-color=dark] .ref-sub button{border-color:var(--accent-text,#aeb9ef);color:var(--accent-text,#aeb9ef)}
+
+:host .panel select:not([multiple]){-webkit-appearance:none;appearance:none;min-height:36px;padding:0 34px 0 12px;border:1px solid #d6d8de;border-radius:10px;background-color:#fff;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%237a7f8c' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 11px center;background-size:15px 15px;color:#222;font-weight:500;line-height:1.3;text-overflow:ellipsis;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+:host .panel select:not([multiple]):hover{border-color:#b6bac4}
+:host .panel select:not([multiple]):focus{outline:none;border-color:var(--a,#3b4890);box-shadow:0 0 0 3px color-mix(in srgb,var(--a,#3b4890) 18%,transparent)}
+:host .panel select:not([multiple]):disabled{opacity:.5;cursor:default}
+:host .panel .set select:not([multiple]){min-height:34px}
+:host .panel .user-nick-choice select:not([multiple]){min-height:32px;border-radius:9px}
+:host .panel[data-color=dark] select:not([multiple]){background-color:#262626;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a8a8a8' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");border-color:#474747;color:#ececec}
+:host .panel[data-color=dark] select:not([multiple]):hover{border-color:#5e5e5e}
+:host .panel[data-color=dark] select:not([multiple]):focus{border-color:var(--accent-text,#aeb9ef);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent-text,#aeb9ef) 22%,transparent)}
+:host .panel select option{font-weight:400}
+:host .cmt-cap{font-size:11px;font-weight:400;color:#999;margin-left:2px}
+:host .rowset.stack{flex-direction:column;align-items:stretch;gap:8px}
+:host .rowset.stack>span:first-child{padding-right:0}
+:host .rowset.stack .seg{display:flex;width:100%}
+:host .rowset.stack .seg button{flex:1}
+:host .seg.wide button{white-space:nowrap}
 `;
   function povTabs(c) {
     const mode = c.id.povMode, audience = isAudience(mode);
@@ -1955,7 +1984,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
     }
     const busy = state.busy === `comments:${p.id}`;
     const label = c.t.id === "ch2" ? "레스" : c.t.id === "ch4" ? "답글" : "댓글";
-    return `<section class="cmts"><h3>${label} <b>${p.comments.length}</b><button type="button" class="more" data-act="more-comments" ${state.busy ? "disabled" : ""}>${I("refresh")}${busy ? "받는 중…" : `AI ${label} 더 받기`}</button>${busy ? '<button type="button" class="more stop" data-act="cancel">중단</button>' : ""}</h3>
+    return `<section class="cmts"><h3>${label} <b>${p.comments.length}</b>${p.comments.length >= commentCap() * 0.8 ? `<small class="cmt-cap">/ ${commentCap().toLocaleString()}</small>` : ""}<button type="button" class="more" data-act="more-comments" ${state.busy ? "disabled" : ""}>${I("refresh")}${busy ? "받는 중…" : `AI ${label} 더 받기`}</button>${busy ? '<button type="button" class="more stop" data-act="cancel">중단</button>' : ""}</h3>
       ${body || `<p class="no-c">아직 ${label}이 없어요.</p>`}
       <form class="c-write" data-form="comment">${userNickSelector()}<textarea name="text" rows="1" maxlength="2000" placeholder="${c.t.id === "gall" ? "닉네임 없이 댓글 쓰기" : "댓글을 입력하세요"}"></textarea><button type="submit">등록</button></form></section>`;
   }
@@ -2040,6 +2069,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
       <h2>로어북 요약 전용 지침</h2><textarea rows="4" data-set="archiveRules" maxlength="4000" placeholder="보존할 경과, 요약 길이, 키워드 기준을 적어 주세요.">${esc(s.archiveRules)}</textarea><p class="muted">게시글 생성 지침과 별개예요. 로어북에 정리할 때만 사용하고 저장창에서 이번 글에 맞게 수정할 수 있어요.</p>
       <h2>새 글 받기</h2>
       ${stepper("postMin", s.postMin, "한 번에 받을 글(최소)")}${stepper("postMax", s.postMax, "한 번에 받을 글(최대)")}${stepper("commentMin", s.commentMin, "글마다 댓글(최소)")}${stepper("commentMax", s.commentMax, "글마다 댓글(최대)")}
+      <div class="rowset stack"><span>글마다 댓글 한도<small>한도에 닿으면 새 댓글을 더 받지 않아요. 줄여도 이미 있는 댓글은 지우지 않아요. 많을수록 저장 용량을 많이 쓰고, AI에게는 앞 10개·최근 110개만 보내요.</small></span><span class="seg">${COMMENT_CAPS.map((n) => `<button type="button" class="${commentCap() === n ? "on" : ""}" data-act="comment-cap" data-n="${n}">${n >= 1000 ? `${n / 1000}천` : n}</button>`).join("")}</span></div>
       <div class="rowset"><span>참고할 최근 턴</span><span class="seg">${[10, 20, 30, 50].map((n) => `<button type="button" class="${s.turnCount === n ? "on" : ""}" data-act="turns" data-n="${n}">${n}</button>`).join("")}</span></div>
       <label class="rowset"><span>내 답글에 AI가 받아치기<small>댓글에 답글을 달면 그 사람이 바로 받아쳐요(키보드 배틀).</small></span><input type="checkbox" class="sw-in" data-set="battle" ${s.battle ? "checked" : ""}><i class="sw ${s.battle ? "on" : ""}"></i></label>
       <h2>게시판 비우기</h2>
@@ -2415,6 +2445,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
       case "launcher": s.launcher = id; await save(); render(); updateLaunchers(); return toast(id === "float" ? "떠 있는 버튼만 써요." : id === "toolbar" ? "채팅방 툴바에 아이콘을 넣었어요." : "떠 있는 버튼과 툴바 아이콘을 같이 써요.");
       case "launcher-reset": writePos(null); placeLauncher(); return toast("떠 있는 버튼을 처음 자리로 옮겼어요.");
       case "turns": s.turnCount = Number(el.dataset.n) || 20; await save(); return render();
+      case "comment-cap": { const n = Number(el.dataset.n); if (!COMMENT_CAPS.includes(n)) return; s.commentCap = n; await save(); return render(); }
       case "reset-mode": s.resetMode = id; await save(); render(); return tidyBoard(currentChatId());
       case "step": {
         const k = el.dataset.key, dd = Number(el.dataset.d) || 0;
@@ -2522,6 +2553,7 @@ JSON 하나만 출력한다. Markdown 코드펜스나 설명을 붙이지 않는
     if (kind === "comment" || kind === "reply") {
       const c = currentPost();
       if (!c) return;
+      if (!commentRoom(c.post)) return toast(commentFullMessage(), true);
       const text = cleanText(new FormData(form).get("text"), 2000);
       if (!text) return;
       const target = kind === "reply" ? c.post.comments.find((x) => x.id === form.dataset.id) : null;
