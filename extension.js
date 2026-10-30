@@ -781,7 +781,7 @@
       .replace(/(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday|Mon|Tue|Wed|Thu|Fri|Sat|Sun)\b/gi," ")
       .replace(/(?:월|화|수|목|금|토|일)요일/g," ")
       .replace(/[([{]\s*[월화수목금토일月火水木金土日]\s*[)\]}]/g," ")
-      .replace(/(?:날짜|일시|시각|시간|DATE|TIME)\s*[:：]/gi," ")
+      .replace(/(?:날짜|일시|시각|시간|DATE|TIME)\s*[:：=]/gi," ")
       .replace(/[*_`#§\[\]{}()【】「」⟦⟧]/g," ")
       .replace(/[｜│┃•·,;🕐🕒🕔🕘📅📆⏰🕰]/gu," ");
     const re = /(?<!\d)(\d{4}|\d{2})\s*(?:년\s*|[-/.]\s*)(\d{1,2})\s*(?:월\s*|[-/.]\s*)(\d{1,2})\s*(?:일\s*|[T\s,|·.])+\s*(?:\([^\n)]{1,12}\)\s*\|?\s*)?(오전|오후|AM|PM)?\s*(\d{1,2})\s*(?:시\s*|:)\s*(\d{1,2})\s*(?:분)?/gi;
